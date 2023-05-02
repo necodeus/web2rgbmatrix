@@ -20,7 +20,7 @@
 
 #define CONFIG_LITTLEFS_SPIFFS_COMPAT 1
 
-#define VERSION "20230122"
+#define VERSION "20230502"
 
 #define DEFAULT_TIMEZONE "Europe/London"
 #define DEFAULT_TWELVEHOUR false
@@ -40,7 +40,7 @@
 #define DBG_OUTPUT_PORT Serial
 
 #define E 18
-#define B1 26
+#define B1 26 // warning: "B1" already defined in .arduino15/packages/esp32/hardware/esp32/2.0.8/cores/esp32/binary.h
 #define B2 12
 #define G1 27
 #define G2 13
@@ -51,6 +51,7 @@
 #define SD_MOSI 21
 #define SD_SS 22
 #define ALT 2
+// note: No hardware SPI pins defined. All SPI access will default to bitbanged output
 
 char timezone[80] = DEFAULT_TIMEZONE;
 bool twelvehour = DEFAULT_TWELVEHOUR;
@@ -150,9 +151,7 @@ int cnt = 0;
 void setGIF(const char *filePath, bool isExternalDevice) {
   th_filePath = filePath;
   th_isExternalDevice = isExternalDevice;
-  if (playing) {
-    continueDrawing = false;
-  }
+  continueDrawing = false;
   cnt = 0;
 }
 
@@ -160,11 +159,13 @@ void codeForTask1(void *parameter) {
   while (true) {
     if (
       cnt == 0
-      && (SD.exists(th_filePath) || LittleFS.exists(th_filePath))) {
-      playing = true;
-      showGIF(th_filePath, th_isExternalDevice);
-      playing = false;
+      && (
+        SD.exists(th_filePath) || LittleFS.exists(th_filePath)
+      )
+    ) {
       cnt++;
+      showGIF(th_filePath, th_isExternalDevice);
+      continueDrawing = true;
       continue;
     }
     delay(50);
@@ -201,11 +202,11 @@ void setup(void) {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(ap, ap_password);
     my_ip = WiFi.softAPIP();
-    Serial.printf("[ERROR] IP address: %s\n", my_ip.toString());
+    Serial.printf("[ERROR] IP address: %s\n", my_ip.toString().c_str());
   } else {
     my_ip = WiFi.localIP();
     wifi_mode = "Infrastructure";
-    Serial.printf("[OK] Connected to WIFI! IP address: %s\n", my_ip.toString());
+    Serial.printf("[OK] Connected to WIFI! IP address: %s\n", my_ip.toString().c_str());
   }
   WiFi.onEvent(WiFiStationConnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_CONNECTED);
   WiFi.onEvent(WiFiGotIP, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
@@ -215,11 +216,11 @@ void setup(void) {
     setDebug(INFO);
     waitForSync();
 
-    Serial.printf("[INFO] UTC: %s\n", UTC.dateTime());
+    Serial.printf("[INFO] UTC: %s\n", UTC.dateTime().c_str());
 
     myTZ.setLocation(F(timezone));
 
-    Serial.printf("[INFO] Time in your timezone: %s\n", myTZ.dateTime());
+    Serial.printf("[INFO] Time in your timezone: %s\n", myTZ.dateTime().c_str());
   }
 
   spi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_SS);
@@ -253,6 +254,7 @@ void setup(void) {
     Serial.printf("[OK] MDNS responder started! You can now connect to %s.local\n", hostname);
   }
 
+  server.client().setTimeout(50000);
   server.on("/", handleRoot);
   server.on("/settings", handleSettings);
   server.on("/sdcard", handleSD);
@@ -354,12 +356,12 @@ void WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
 }
 
 void WiFiGotIP(WiFiEvent_t event, WiFiEventInfo_t info) {
-  Serial.printf("[OK] WiFi connected. IP address: %s\n", WiFi.localIP());
+  Serial.printf("[OK] WiFi connected. IP address: %s\n", WiFi.localIP().toString().c_str());
   my_ip = WiFi.localIP();
 }
 
 void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info) {
-  Serial.printf("[ERROR] WiFi lost connection. Reason: %s\nTrying to Reconnect...\n", info.wifi_sta_disconnected.reason);
+  Serial.printf("[ERROR] WiFi lost connection. Reason: %d\nTrying to Reconnect...\n", info.wifi_sta_disconnected.reason);
   WiFi.begin(ssid, password);
 }
 
@@ -383,7 +385,7 @@ void handleRoot() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>web2rgbmatrix</title>" + style + "</head><body><form action=\"/\"><a href=\"" + homepage + "\"><h1>web2rgbmatrix</h1></a><br><p><h3>Status</h3><table><tr><td>Version</td><td>" + VERSION + "</td></tr><tr><td>SD Card</td><td>" + sd_status + "</td></tr><tr><td>Wifi Mode</td><td>" + wifi_mode + "</td></tr><tr><td>rgbmatrix IP</td><td>" + my_ip.toString() + "</td></tr>" + image_status + "</table></p><input type=\"button\" class=actionbtn onclick=\"location.href='/clear';\" value=\"Clear Display\" />" + ((card_mounted) ? "<input type=\"button\" class=btn onclick=\"location.href='/sdcard';\" value=\"GIF Upload\" /><input type=\"button\" class=btn onclick=\"location.href='/list?dir=/';\" value=\"File Browser\" />" : "") + "<input type=\"button\" class=btn onclick=\"location.href='/settings';\" value=\"Settings\" /><input type=\"button\" class=btn onclick=\"location.href='/ota';\" value=\"OTA Update\" /><input type=\"button\" class=cautionbtn onclick=\"location.href='/reboot';\" value=\"Reboot\" /></form></body></html>\r\n"
+    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>web2rgbmatrix</title>" + style + "</head><body><form action=\"/\"><a href=\"\"><h1>web2rgbmatrix</h1></a><br><p><h3>Status</h3><table><tr><td>Version</td><td>" + VERSION + "</td></tr><tr><td>SD Card</td><td>" + sd_status + "</td></tr><tr><td>Wifi Mode</td><td>" + wifi_mode + "</td></tr><tr><td>rgbmatrix IP</td><td>" + my_ip.toString() + "</td></tr>" + image_status + "</table></p><input type=\"button\" class=actionbtn onclick=\"location.href='/clear';\" value=\"Clear Display\" />" + ((card_mounted) ? "<input type=\"button\" class=btn onclick=\"location.href='/sdcard';\" value=\"GIF Upload\" /><input type=\"button\" class=btn onclick=\"location.href='/list?dir=/';\" value=\"File Browser\" />" : "") + "<input type=\"button\" class=btn onclick=\"location.href='/settings';\" value=\"Settings\" /><input type=\"button\" class=btn onclick=\"location.href='/ota';\" value=\"OTA Update\" /><input type=\"button\" class=cautionbtn onclick=\"location.href='/reboot';\" value=\"Reboot\" /></form></body></html>\r\n"
   );
 }
 
@@ -505,7 +507,7 @@ void handleSettings() {
     server.send(
       200,
       F("text/html"),
-      "<html><head><title>web2rgbmatrix - Settings</title><script>function myFunction() {var x = document.getElementById(\"idPassword\")\;if (x.type === \"password\") {x.type = \"text\"\;} else {x.type = \"password\"\;}}</script>" + style + "</head><body><form action=\"/settings\"><h1>Settings</h1><p><h3>Wifi Client Settings</h3>SSID<br><input type=\"text\" name=\"ssid\" value=\"" + String(ssid) + "\"><br>Password<br><input type=\"password\" name=\"password\" id=\"idPassword\" value=\"" + String(password) + "\"><br><div><label for=\"showpass\" class=\"chkboxlabel\"><input type=\"checkbox\"id=\"showpass\" onclick=\"myFunction()\"> Show Password</label></div></p><p><h3>Display Settings</h3><label for=\"textcolor\">Text Color</label><input type=\"color\" id=\"textcolor\" name=\"textcolor\" value=\"" + textcolor + "\"><label for=\"brightness\">LED Brightness</label><input type=\"number\" id=\"brightness\" name=\"brightness\" min=\"0\" max=\"255\" value=" + matrix_brightness + "><label for=\"playback\">GIF Playback</label><br><br><select id=\"playback\" name=\"playback\" value=\"" + playback + "\">" + playback_select_items + "</select><h3>Screen Saver Settings</h3><label for=\"screensaver\">Screen Saver</label><br><br><select id=\"screensaver\" name=\"screensaver\" value=\"" + screensaver + "\">" + saver_select_items + "</select><br><br><label for=\"accentcolor\">Accent Color</label><input type=\"color\" id=\"accentcolor\" name=\"accentcolor\" value=\"" + accentcolor + "\"><label for=\"timeout\">Client Timeout(Minutes)</label><input type=\"number\" id=\"timeout\" name=\"timeout\" min=\"0\" max=\"60\" value=" + (ping_fail_count / 2) + "><label for=\"timezone\">Timezone</label><br><br><select id=\"timezone\" name=\"timezone\" value=\"" + String(timezone) + "\">" + tz_select_items + "</select><br><br><label for=\"twelvehour\" class=\"chkboxlabel\"><input type=\"checkbox\" id=\"twelvehour\" name=\"twelvehour\" value=\"true\"" + (twelvehour ? " checked=\"checked\"" : "") + "/> 12hr Format</label></p><input type=\"submit\" class=actionbtn value=\"Save\"><br><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n"
+      "<html><head><title>web2rgbmatrix - Settings</title><script>function myFunction() {var x = document.getElementById(\"idPassword\");if (x.type === \"password\") {x.type = \"text\";} else {x.type = \"password\";}}</script>" + style + "</head><body><form action=\"/settings\"><h1>Settings</h1><p><h3>Wifi Client Settings</h3>SSID<br><input type=\"text\" name=\"ssid\" value=\"" + String(ssid) + "\"><br>Password<br><input type=\"password\" name=\"password\" id=\"idPassword\" value=\"" + String(password) + "\"><br><div><label for=\"showpass\" class=\"chkboxlabel\"><input type=\"checkbox\"id=\"showpass\" onclick=\"myFunction()\"> Show Password</label></div></p><p><h3>Display Settings</h3><label for=\"textcolor\">Text Color</label><input type=\"color\" id=\"textcolor\" name=\"textcolor\" value=\"" + textcolor + "\"><label for=\"brightness\">LED Brightness</label><input type=\"number\" id=\"brightness\" name=\"brightness\" min=\"0\" max=\"255\" value=" + matrix_brightness + "><label for=\"playback\">GIF Playback</label><br><br><select id=\"playback\" name=\"playback\" value=\"" + playback + "\">" + playback_select_items + "</select><h3>Screen Saver Settings</h3><label for=\"screensaver\">Screen Saver</label><br><br><select id=\"screensaver\" name=\"screensaver\" value=\"" + screensaver + "\">" + saver_select_items + "</select><br><br><label for=\"accentcolor\">Accent Color</label><input type=\"color\" id=\"accentcolor\" name=\"accentcolor\" value=\"" + accentcolor + "\"><label for=\"timeout\">Client Timeout(Minutes)</label><input type=\"number\" id=\"timeout\" name=\"timeout\" min=\"0\" max=\"60\" value=" + (ping_fail_count / 2) + "><label for=\"timezone\">Timezone</label><br><br><select id=\"timezone\" name=\"timezone\" value=\"" + String(timezone) + "\">" + tz_select_items + "</select><br><br><label for=\"twelvehour\" class=\"chkboxlabel\"><input type=\"checkbox\" id=\"twelvehour\" name=\"twelvehour\" value=\"true\"" + (twelvehour ? " checked=\"checked\"" : "") + "/> 12hr Format</label></p><input type=\"submit\" class=actionbtn value=\"Save\"><br><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n"
     );
 
     return;
@@ -742,11 +744,13 @@ void handleRemotePlay() {
 
   if (uploadfile.status == UPLOAD_FILE_START && !uploading) {
     if (contentLength > (LittleFS.totalBytes() - LittleFS.usedBytes())) {
-      Serial.printf("[ERROR] File to upload via /remoteplay was too large! (%s)\n",  String(contentLength) + " > " + String(LittleFS.totalBytes() - LittleFS.usedBytes()));
+      Serial.printf("[ERROR] UPLOAD_FILE_START - File to upload via /remoteplay was too large! (%s)\n",  (String(contentLength) + " > " + String(LittleFS.totalBytes() - LittleFS.usedBytes())).c_str());
       server.send(500, F("text/plain"), "[ERROR] File too large\r\n");
       uploading = false;
       return;
     }
+
+    Serial.printf("[OK] UPLOAD_FILE_START\n");
 
     uploading = true;
     LittleFS.remove(gif_filename);
@@ -756,10 +760,13 @@ void handleRemotePlay() {
 
   if (uploadfile.status == UPLOAD_FILE_WRITE) {
     if (!upload_file) {
-      server.send(500, F("text/plain"), "[ERROR] Couldn't write file\r\n");
       uploading = false;
+      Serial.printf("[ERROR] UPLOAD_FILE_WRITE\n");
+      server.send(500, F("text/plain"), "[ERROR] Couldn't write file\r\n");
       return;
     }
+
+    Serial.printf("[OK] UPLOAD_FILE_WRITE\n");
 
     uploading = true;
     upload_file.write(uploadfile.buf, uploadfile.currentSize);
@@ -768,24 +775,31 @@ void handleRemotePlay() {
 
   if (uploadfile.status == UPLOAD_FILE_END) {
     if (!upload_file) {
-      server.send(500, F("text/plain"), "[ERROR] Couldn't create file\r\n");
       uploading = false;
+      Serial.printf("[ERROR] UPLOAD_FILE_END\n");
+      server.send(500, F("text/plain"), "[ERROR] Couldn't create file\r\n");
       return;
     }
+
+    Serial.printf("[OK] UPLOAD_FILE_END\n");
     upload_file.close();
+
     client_ip = server.client().remoteIP();
     ping_fail = 0;
-    server.send(200, F("text/html"), "[OK] SUCCESS\r\n");
     sd_filename = "";
     tty_client = false;
-    setGIF(gif_filename, false);
     uploading = false;
+
+    setGIF(gif_filename, false);
+
+    server.send(200, F("text/html"), "[OK] SUCCESS\r\n");
     return;
   }
 
   if (uploadfile.status == UPLOAD_FILE_ABORTED) {
-    server.send(409, F("text/plain"), "[ERROR] File upload via /remoteplay was aborted!\r\n");
+    Serial.printf("[ERROR] UPLOAD_FILE_ABORTED\n");
     uploading = false;
+    server.send(409, F("text/plain"), "[ERROR] File upload via /remoteplay was aborted!\r\n");
     return;
   }
 }
@@ -947,7 +961,7 @@ void handleClear() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Display Cleared</title><meta http-equiv=\"refresh\" content=\"3\;URL=\'/\'\" />" + style + "</head><body><form><p>Display Cleared</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Display Cleared</title><meta http-equiv=\"refresh\" content=\"3;URL=\'/\'\" />" + style + "</head><body><form><p>Display Cleared</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
 }
 
 // Endpoint: /reboot
@@ -962,7 +976,7 @@ void handleReboot() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Rebooting...</title><meta http-equiv=\"refresh\" content=\"60\;URL=\'/\'\" />" + style + "</head><body><form><p>Rebooting...</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Rebooting...</title><meta http-equiv=\"refresh\" content=\"60;URL=\'/\'\" />" + style + "</head><body><form><p>Rebooting...</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
 
   ESP.restart();
 }
@@ -1047,23 +1061,17 @@ void checkClientTimeout() {
     }
   } else {
     if (config_display_on == false && tty_client == false) {
-      switch (screensaver) {
-        case "Clock": {
-          clockScreenSaver();
-          break;
-        }
-        case "Plasma": {
-          plasmaScreenSaver();
-          break;
-        }
-        case "Starfield": {
-          starfieldScreenSaver();
-          break;
-        }
-        case "Toasters": {
-          toasterScreenSaver();
-          break;
-        }
+      if (screensaver == "Clock") {
+        clockScreenSaver();
+      }
+      else if (screensaver == "Plasma") {
+        plasmaScreenSaver();
+      }
+      else if (screensaver == "Starfield") {
+        starfieldScreenSaver();
+      }
+      else if (screensaver == "Toasters") {
+        toasterScreenSaver();
       }
     }
   }
@@ -1308,12 +1316,18 @@ int32_t GIFReadFile(GIFFILE *pFile, uint8_t *pBuf, int32_t iLen) {
   int32_t iBytesRead;
   iBytesRead = iLen;
   File *gif_file = static_cast<File *>(pFile->fHandle);
-  if ((pFile->iSize - pFile->iPos) < iLen)
-    iBytesRead = pFile->iSize - pFile->iPos - 1;
-  if (iBytesRead <= 0)
-    return 0;
+
+  if ((pFile->iSize - pFile->iPos) < iLen) {
+  	iBytesRead = pFile->iSize - pFile->iPos - 1;
+  }
+
+  if (iBytesRead <= 0) {
+  	return 0;
+  }
+
   iBytesRead = (int32_t)gif_file->read(pBuf, iBytesRead);
   pFile->iPos = gif_file->position();
+
   return iBytesRead;
 }
 
@@ -1323,6 +1337,7 @@ int32_t GIFSeekFile(GIFFILE *pFile, int32_t iPosition) {
   gif_file->seek(iPosition);
   pFile->iPos = (int32_t)gif_file->position();
   i = micros() - i;
+
   return pFile->iPos;
 }
 
@@ -1337,14 +1352,17 @@ void showGIF(const char *name, bool sd) {
 
       Serial.printf("[INFO] W: %d | H: %d | Frames: %d | Duration: %d ms\n", gif.getCanvasWidth(), gif.getCanvasHeight(), pInfo.iFrameCount, pInfo.iDuration);
       int i = 0;
+
       do {
         i++;
         Serial.printf("[INFO] PLAYING FRAME: %d / %d\n", i, pInfo.iFrameCount);
       } while (gif.playFrame(true, NULL) && continueDrawing);
+
       if (!continueDrawing) {
         Serial.printf("[OK] PLAYING ABORTED!\n");
-        continueDrawing = true;
+        cnt = 0;
       }
+
       Serial.flush();
       gif.close();
     }
@@ -1355,14 +1373,17 @@ void showGIF(const char *name, bool sd) {
 
       Serial.printf("[INFO] W: %d | H: %d | Frames: %d | Duration: %d ms\n", gif.getCanvasWidth(), gif.getCanvasHeight(), pInfo.iFrameCount, pInfo.iDuration);
       int i = 0;
+
       do {
         i++;
         Serial.printf("[INFO] PLAYING FRAME: %d / %d\n", i, pInfo.iFrameCount);
       } while (gif.playFrame(true, NULL) && continueDrawing);
+
       if (!continueDrawing) {
         Serial.printf("[OK] PLAYING ABORTED!\n");
-        continueDrawing = true;
+        cnt = 0;
       }
+
       Serial.flush();
       gif.close();
     }
@@ -1561,7 +1582,6 @@ void animationHandler() {
       }
 
       finishedAnimating = tetris1Done && tetris2Done && tetris3Done;
-
     } else {
       finishedAnimating = tetris.drawNumbers(2 + tetrisXOffset, 10 + tetrisYOffset, showColon);
     }
@@ -1580,6 +1600,7 @@ void setMatrixTime() {
     }
 
     AmPmString = myTZ.dateTime("A");
+
     if (lastDisplayedAmPm != AmPmString) {
       lastDisplayedAmPm = AmPmString;
       tetris2.setText("M", forceRefresh);
@@ -1615,6 +1636,7 @@ void bufferClear(CRGB *buf) {
 
 void matrixFill(CRGB *leds) {
   uint16_t y = (totalHeight);
+
   do {
     --y;
     uint16_t x = (totalWidth);
