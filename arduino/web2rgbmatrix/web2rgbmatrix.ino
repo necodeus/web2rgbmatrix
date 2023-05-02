@@ -144,28 +144,25 @@ bool uploading = false;
 
 const char *th_filePath = "";
 bool th_isExternalDevice;
-bool continueDrawing = true;
-bool playing = false;
-int cnt = 0;
+bool allowPlaying = true;
+bool isPlayable = false;
 
 void setGIF(const char *filePath, bool isExternalDevice) {
   th_filePath = filePath;
   th_isExternalDevice = isExternalDevice;
-  continueDrawing = false;
-  cnt = 0;
+  isPlayable = true; // możliwość wznowienia dla zakończonych
+  allowPlaying = false; // zatrzymanie dla trwających
 }
 
 void codeForTask1(void *parameter) {
   while (true) {
     if (
-      cnt == 0
+      isPlayable
       && (
         SD.exists(th_filePath) || LittleFS.exists(th_filePath)
       )
     ) {
-      cnt++;
       showGIF(th_filePath, th_isExternalDevice);
-      continueDrawing = true;
       continue;
     }
     delay(50);
@@ -1356,11 +1353,14 @@ void showGIF(const char *name, bool sd) {
       do {
         i++;
         Serial.printf("[INFO] PLAYING FRAME: %d / %d\n", i, pInfo.iFrameCount);
-      } while (gif.playFrame(true, NULL) && continueDrawing);
+      } while (allowPlaying && gif.playFrame(true, NULL));
 
-      if (!continueDrawing) {
+      if (!allowPlaying) {
         Serial.printf("[OK] PLAYING ABORTED!\n");
-        cnt = 0;
+        isPlayable = true;
+        allowPlaying = true;
+      } else {
+        isPlayable = false;
       }
 
       Serial.flush();
@@ -1377,11 +1377,14 @@ void showGIF(const char *name, bool sd) {
       do {
         i++;
         Serial.printf("[INFO] PLAYING FRAME: %d / %d\n", i, pInfo.iFrameCount);
-      } while (gif.playFrame(true, NULL) && continueDrawing);
+      } while (allowPlaying && gif.playFrame(true, NULL));
 
-      if (!continueDrawing) {
+      if (!allowPlaying) {
         Serial.printf("[OK] PLAYING ABORTED!\n");
-        cnt = 0;
+        isPlayable = true;
+        allowPlaying = true;
+      } else {
+        isPlayable = false;
       }
 
       Serial.flush();
