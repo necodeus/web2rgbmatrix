@@ -11,7 +11,6 @@
 #include <SD.h>
 #include <SdFat.h>
 #include <TetrisMatrixDraw.h>
-#include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
@@ -24,10 +23,13 @@
 
 #define DEFAULT_TIMEZONE "Europe/London"
 #define DEFAULT_TWELVEHOUR false
+
 #define DEFAULT_SSID "Dawid"
 #define DEFAULT_PASSWORD "password"
+
 #define DEFAULT_AP_SSID "Dawid"
 #define DEFAULT_AP_PASSWORD "password"
+
 #define DEFAULT_HOSTNAME "rgbmatrix"
 #define DEFAULT_TEXT_COLOR "#FFFFFF"
 #define DEFAULT_BRIGHTNESS 255
@@ -35,8 +37,6 @@
 #define DEFAULT_SCREENSAVER "Blank" // Blank | Clock | Plasma | Starfield | Toasters
 #define DEFAULT_SCREENSAVER_COLOR "#FFFFFF"
 #define DEFAULT_PING_FAIL_COUNT 0 // 0 - disabled | 1 - 30 seconds | 2 - 60 seconds
-#define DEFAULT_SD_STATIC_GIF_FOLDER "/static/"
-#define DEFAULT_SD_ANIMATED_GIF_FOLDER "/animated/"
 #define DBG_OUTPUT_PORT Serial
 
 #define E 18
@@ -66,8 +66,6 @@ String playback = DEFAULT_GIF_PLAYBACK;
 String screensaver = DEFAULT_SCREENSAVER;
 String accentcolor = DEFAULT_SCREENSAVER_COLOR;
 int ping_fail_count = DEFAULT_PING_FAIL_COUNT;
-char gif_folder[80] = DEFAULT_SD_STATIC_GIF_FOLDER;
-char animated_gif_folder[80] = DEFAULT_SD_ANIMATED_GIF_FOLDER;
 
 SPIClass spi = SPIClass(HSPI);
 
@@ -90,7 +88,7 @@ String style = "<style>#file-input,input{width:100%;height:44px;border-radius:4p
 const char *config_filename = "/secrets.json";
 const char *gif_filename = "/temp2.gif";
 
-String wifi_mode = "AP";
+String wifi_mode = "";
 String sd_status = "";
 bool card_mounted = false;
 bool config_display_on = true;
@@ -199,12 +197,14 @@ void setup(void) {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(ap, ap_password);
     my_ip = WiFi.softAPIP();
-    Serial.printf("[ERROR] IP address: %s\n", my_ip.toString().c_str());
+    wifi_mode = "punkt dostępu";
+    Serial.printf("[OK] Address: %s\n", my_ip.toString().c_str());
   } else {
     my_ip = WiFi.localIP();
-    wifi_mode = "Infrastructure";
-    Serial.printf("[OK] Connected to WIFI! IP address: %s\n", my_ip.toString().c_str());
+    wifi_mode = "urządzenie końcowe";
+    Serial.printf("[OK] Connected to Wi-Fi! Address: %s\n", my_ip.toString().c_str());
   }
+
   WiFi.onEvent(WiFiStationConnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_CONNECTED);
   WiFi.onEvent(WiFiGotIP, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
   WiFi.onEvent(WiFiStationDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
@@ -225,7 +225,7 @@ void setup(void) {
     uint8_t cardType = SD.cardType();
     if (cardType == CARD_NONE) {
       Serial.printf("[INFO] No SD card\n");
-      sd_status = "No card";
+      sd_status = "brak";
     } else {
       card_mounted = true;
       if (cardType == CARD_MMC) {
@@ -239,11 +239,11 @@ void setup(void) {
       }
       uint64_t cardSize = SD.cardSize() / (1024 * 1024);
       Serial.printf("[INFO] SD Card Size: %lluMB\n", cardSize);
-      sd_status = String(cardSize) + "MB";
+      sd_status = String(cardSize) + " MB";
     }
   } else {
     Serial.printf("[ERROR] Card Mount Failed\n");
-    sd_status = "Mount Failed";
+    sd_status = "błąd montowania";
   }
 
   if (MDNS.begin(hostname)) {
@@ -374,15 +374,15 @@ void handleRoot() {
   String image_status = "";
 
   if (LittleFS.exists(gif_filename)) {
-    image_status = "<tr><td>Client</td><td>" + client_ip.toString() + "</td></tr><tr><td>Current Image</td><td><img src=\"" + String(gif_filename) + "\"><img></td></tr>";
+    image_status = "<tr><td>Client</td><td>" + client_ip.toString() + "</td></tr><tr><td>GIF</td><td><img src=\"" + String(gif_filename) + "\"><img></td></tr>";
   } else if (sd_filename != "") {
-    image_status = "<tr><td>Client</td><td>" + ((tty_client) ? "Serial" : client_ip.toString()) + "</td></tr><tr><td>Current Image</td><td><img src=\"" + String(sd_filename) + "\"><img></td></tr>";
+    image_status = "<tr><td>Client</td><td>" + ((tty_client) ? "Serial" : client_ip.toString()) + "</td></tr><tr><td>GIF</td><td><img src=\"" + String(sd_filename) + "\"><img></td></tr>";
   }
 
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>web2rgbmatrix</title>" + style + "</head><body><form action=\"/\"><a href=\"\"><h1>web2rgbmatrix</h1></a><br><p><h3>Status</h3><table><tr><td>Version</td><td>" + VERSION + "</td></tr><tr><td>SD Card</td><td>" + sd_status + "</td></tr><tr><td>Wifi Mode</td><td>" + wifi_mode + "</td></tr><tr><td>rgbmatrix IP</td><td>" + my_ip.toString() + "</td></tr>" + image_status + "</table></p><input type=\"button\" class=actionbtn onclick=\"location.href='/clear';\" value=\"Clear Display\" />" + ((card_mounted) ? "<input type=\"button\" class=btn onclick=\"location.href='/sdcard';\" value=\"GIF Upload\" /><input type=\"button\" class=btn onclick=\"location.href='/list?dir=/';\" value=\"File Browser\" />" : "") + "<input type=\"button\" class=btn onclick=\"location.href='/settings';\" value=\"Settings\" /><input type=\"button\" class=btn onclick=\"location.href='/ota';\" value=\"OTA Update\" /><input type=\"button\" class=cautionbtn onclick=\"location.href='/reboot';\" value=\"Reboot\" /></form></body></html>\r\n"
+    "<html><head><meta charset=\"utf-8\" /><title>Strona główna</title>" + style + "</head><body><form action=\"/\"><a href=\"\"><h1>Status</h1></a><table><tr><td>Wersja</td><td>" + VERSION + "</td></tr><tr><td>Karta SD</td><td>" + sd_status + "</td></tr><tr><td>Wi-Fi</td><td>" + wifi_mode + "</td></tr><tr><td>Adres</td><td>" + my_ip.toString() + "</td></tr>" + image_status + "</table></p><input type=\"button\" class=actionbtn onclick=\"location.href='/clear';\" value=\"Wyczyść ekran\" />" + ((card_mounted) ? "<input type=\"button\" class=btn onclick=\"location.href='/sdcard';\" value=\"Wgraj na SD\" /><input type=\"button\" class=btn onclick=\"location.href='/list?dir=/';\" value=\"Przeglądarka plików\" />" : "") + "<input type=\"button\" class=btn onclick=\"location.href='/settings';\" value=\"Ustawienia\" /><input type=\"button\" class=cautionbtn onclick=\"location.href='/reboot';\" value=\"Uruchom ponownie\" /></form></body></html>\r\n"
   );
 }
 
@@ -406,15 +406,15 @@ void handleSettings() {
     || server.arg("timezone") == ""
   ) {
     String playback_select_items =
-      "<option value=\"Animated\"" + String((playback == "Animated") ? " selected" : "") + ">Animated</option>"
-      "<option value=\"Static\""   + String((playback == "Static")   ? " selected" : "") + ">Static</option>"
-      "<option value=\"Both\""     + String((playback == "Both")     ? " selected" : "") + ">Animated then Static</option>"
+      "<option value=\"Animated\"" + String((playback == "Animated") ? " selected" : "") + ">Animowany</option>"
+      "<option value=\"Static\""   + String((playback == "Static")   ? " selected" : "") + ">Statyczny</option>"
+      "<option value=\"Both\""     + String((playback == "Both")     ? " selected" : "") + ">Animowany, później statyczny</option>"
       "<option value=\"Fallback\"" + String((playback == "Fallback") ? " selected" : "") + ">Static Fallback</option>";
 
     String saver_select_items =
-      "<option value=\"Blank\""     + String((screensaver == "Blank")     ? " selected" : "") + ">Blank</option>"
-      "<option value=\"Clock\""     + String((screensaver == "Clock")     ? " selected" : "") + ">Clock</option>"
-      "<option value=\"Plasma\""    + String((screensaver == "Plasma")    ? " selected" : "") + ">Plasma</option>"
+      "<option value=\"Blank\""     + String((screensaver == "Blank")     ? " selected" : "") + ">Brak</option>"
+      "<option value=\"Clock\""     + String((screensaver == "Clock")     ? " selected" : "") + ">Zegar</option>"
+      "<option value=\"Plasma\""    + String((screensaver == "Plasma")    ? " selected" : "") + ">Plazma</option>"
       "<option value=\"Starfield\"" + String((screensaver == "Starfield") ? " selected" : "") + ">Starfield</option>"
       "<option value=\"Toasters\""  + String((screensaver == "Toasters")  ? " selected" : "") + ">Toasters</option>";
 
@@ -504,7 +504,7 @@ void handleSettings() {
     server.send(
       200,
       F("text/html"),
-      "<html><head><title>web2rgbmatrix - Settings</title><script>function myFunction() {var x = document.getElementById(\"idPassword\");if (x.type === \"password\") {x.type = \"text\";} else {x.type = \"password\";}}</script>" + style + "</head><body><form action=\"/settings\"><h1>Settings</h1><p><h3>Wifi Client Settings</h3>SSID<br><input type=\"text\" name=\"ssid\" value=\"" + String(ssid) + "\"><br>Password<br><input type=\"password\" name=\"password\" id=\"idPassword\" value=\"" + String(password) + "\"><br><div><label for=\"showpass\" class=\"chkboxlabel\"><input type=\"checkbox\"id=\"showpass\" onclick=\"myFunction()\"> Show Password</label></div></p><p><h3>Display Settings</h3><label for=\"textcolor\">Text Color</label><input type=\"color\" id=\"textcolor\" name=\"textcolor\" value=\"" + textcolor + "\"><label for=\"brightness\">LED Brightness</label><input type=\"number\" id=\"brightness\" name=\"brightness\" min=\"0\" max=\"255\" value=" + matrix_brightness + "><label for=\"playback\">GIF Playback</label><br><br><select id=\"playback\" name=\"playback\" value=\"" + playback + "\">" + playback_select_items + "</select><h3>Screen Saver Settings</h3><label for=\"screensaver\">Screen Saver</label><br><br><select id=\"screensaver\" name=\"screensaver\" value=\"" + screensaver + "\">" + saver_select_items + "</select><br><br><label for=\"accentcolor\">Accent Color</label><input type=\"color\" id=\"accentcolor\" name=\"accentcolor\" value=\"" + accentcolor + "\"><label for=\"timeout\">Client Timeout(Minutes)</label><input type=\"number\" id=\"timeout\" name=\"timeout\" min=\"0\" max=\"60\" value=" + (ping_fail_count / 2) + "><label for=\"timezone\">Timezone</label><br><br><select id=\"timezone\" name=\"timezone\" value=\"" + String(timezone) + "\">" + tz_select_items + "</select><br><br><label for=\"twelvehour\" class=\"chkboxlabel\"><input type=\"checkbox\" id=\"twelvehour\" name=\"twelvehour\" value=\"true\"" + (twelvehour ? " checked=\"checked\"" : "") + "/> 12hr Format</label></p><input type=\"submit\" class=actionbtn value=\"Save\"><br><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n"
+      "<html><head><meta charset=\"utf-8\" /><title>Ustawienia</title><script>function myFunction() {var x = document.getElementById(\"idPassword\");if (x.type === \"password\") {x.type = \"text\";} else {x.type = \"password\";}}</script>" + style + "</head><body><form action=\"/settings\"><h1>Ustawienia</h1><p><h3>Wi-Fi</h3>SSID<br><input type=\"text\" name=\"ssid\" value=\"" + String(ssid) + "\"><br>Hasło<br><input type=\"password\" name=\"password\" id=\"idPassword\" value=\"" + String(password) + "\"><br><div><label for=\"showpass\" class=\"chkboxlabel\"><input type=\"checkbox\"id=\"showpass\" onclick=\"myFunction()\"> Pokaż hasło</label></div></p><br/><p><h3>Wyświetlacz</h3><label for=\"textcolor\">Kolor tekstu</label><input type=\"color\" id=\"textcolor\" name=\"textcolor\" value=\"" + textcolor + "\"><label for=\"brightness\">Jasność ekranu</label><input type=\"number\" id=\"brightness\" name=\"brightness\" min=\"0\" max=\"255\" value=" + matrix_brightness + "><label for=\"playback\">Odtwarzanie GIF-ów</label><br><br><select id=\"playback\" name=\"playback\" value=\"" + playback + "\">" + playback_select_items + "</select><br/><h3>Wygaszacz</h3><label for=\"screensaver\">Wygaszacz</label><br><br><select id=\"screensaver\" name=\"screensaver\" value=\"" + screensaver + "\">" + saver_select_items + "</select><br><br><label for=\"accentcolor\">Kolor</label><input type=\"color\" id=\"accentcolor\" name=\"accentcolor\" value=\"" + accentcolor + "\"><label for=\"timeout\">Nieaktywność (w minutach) do uruchomienia</label><input type=\"number\" id=\"timeout\" name=\"timeout\" min=\"0\" max=\"60\" value=" + (ping_fail_count / 2) + "><label for=\"timezone\">Strefa czasowa</label><br><br><select id=\"timezone\" name=\"timezone\" value=\"" + String(timezone) + "\">" + tz_select_items + "</select><br><br><label for=\"twelvehour\" class=\"chkboxlabel\"><input type=\"checkbox\" id=\"twelvehour\" name=\"twelvehour\" value=\"true\"" + (twelvehour ? " checked=\"checked\"" : "") + "/> 12 godzinny format</label></p><input type=\"submit\" class=actionbtn value=\"Zapisz\"><br><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>\r\n"
     );
 
     return;
@@ -561,7 +561,10 @@ void handleSettings() {
 
   serializeJson(doc, config_file);
 
-  server.send(200, F("text/html"), "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Settings Saved</title>" + style + "</head><body><form><p>Settings saved, you must reboot for WiFi and timezone changes to take effect.</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/settings';\" value=\"Back\" /><input type=\"button\" class=cautionbtn onclick=\"location.href='/reboot';\" value=\"Reboot\" /></form></body></html>\r\n");
+  server.send(
+    200,
+    F("text/html"),
+    "<html><head><meta charset=\"utf-8\" /><title>Ustawienia</title>" + style + "</head><body><form><p>Ustawienia zapisane. Zmiana ustawień Wi-Fi i strefy czasowej nastąpi po ponownym uruchomieniu.</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/settings';\" value=\"Wróć\" /><input type=\"button\" class=cautionbtn onclick=\"location.href='/reboot';\" value=\"Uruchom ponownie\" /></form></body></html>\r\n");
 }
 
 // Endpoint: /list
@@ -588,7 +591,7 @@ void handleFileList() {
     server.sendHeader("Expires", "-1");
     server.setContentLength(CONTENT_LENGTH_UNKNOWN);
     server.send(200, "text/html", "");
-    server.sendContent("<html><head><title>web2rgbmatrix - File Browser</title>" + style + "</head><body><form><h1>File Browser:</h1><h2>" + server.arg("dir") + "</h2><p><table>");
+    server.sendContent("<html><head><meta charset=\"utf-8\" /><title>Przeglądarka plików</title>" + style + "</head><body><form><h1>Przeglądarka plików</h1><h2>" + server.arg("dir") + "</h2><p><table>");
 
     if (root.isDirectory()) {
       if (server.arg("dir") != "/") {
@@ -609,7 +612,7 @@ void handleFileList() {
       }
     }
 
-    server.sendContent("</table></p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>");
+    server.sendContent("</table></p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>");
     server.sendContent(F(""));
     server.client().stop();
   } else if (server.hasArg("file")) {
@@ -630,7 +633,7 @@ void handleFileList() {
     server.send(
       200,
       F("text/html"),
-      "<html><head><title>web2rgbmatrix - File Browser</title>" + style + "</head><body><form><h1>File Browser:</h1><h3>" + server.arg("file") + "</h3><table><p><tr><td>Image</td><td><img src=\"" + server.arg("file") + "\" /></td></tr><tr><td>Size</td><td>" + ((file.size() >= 1024) ? String(file.size() / 1024) + "KB" : String(file.size()) + "B") + "</td></tr></table></p><input id='play-button' type=\"button\" class=actionbtn onclick=\"location.href='/sdplay?file=" + server.arg("file") + "';\" value=\"Play\" /><input id='delete-button' type=\"button\" class=cautionbtn onclick=\"location.href='/delete?file=" + server.arg("file") + "';\" value=\"Delete\" /><input id='back-button' type=\"button\" class=btn onclick=\"history.back()\" value=\"Back\" /></form></body></html>\r\n");
+      "<html><head><meta charset=\"utf-8\" /><title>Przeglądarka plików</title>" + style + "</head><body><form><h1>Przeglądarka plików</h1><h3>" + server.arg("file") + "</h3><table><p><tr><td>Image</td><td><img src=\"" + server.arg("file") + "\" /></td></tr><tr><td>Size</td><td>" + ((file.size() >= 1024) ? String(file.size() / 1024) + "KB" : String(file.size()) + "B") + "</td></tr></table></p><input id='play-button' type=\"button\" class=actionbtn onclick=\"location.href='/sdplay?file=" + server.arg("file") + "';\" value=\"Play\" /><input id='delete-button' type=\"button\" class=cautionbtn onclick=\"location.href='/delete?file=" + server.arg("file") + "';\" value=\"Delete\" /><input id='back-button' type=\"button\" class=btn onclick=\"history.back()\" value=\"Back\" /></form></body></html>\r\n");
   }
 }
 
@@ -657,7 +660,10 @@ void handleFileDelete() {
 
   SD.remove(server.arg("file"));
 
-  server.send(200, F("text/html"), "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>web2rgbmatrix - File Delete</title>" + style + "</head><body><form><h1>File Deleted: " + server.arg("file") + "</h1><input id='back-button' type=\"button\" class=btn onclick=\"window.history.go(-2)\" value=\"Back\" /></form></body></html>\r\n");
+  server.send(
+    200,
+    F("text/html"),
+    "<html><head><meta charset=\"utf-8\" /><title>Usuwanie GIF-a</title>" + style + "</head><body><form><h1>Usunięto GIF-a: " + server.arg("file") + "</h1><input id='back-button' type=\"button\" class=btn onclick=\"window.history.go(-2)\" value=\"Back\" /></form></body></html>\r\n");
 }
 
 // Endpoint: /sdcard
@@ -677,7 +683,7 @@ void handleSD() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>web2rgbmatrix - GIF Upload</title>" + style + "</head><body>" + "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>" + "<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'><h1>GIF Upload</h1><input type='file' name='update' id='file' onchange='sub(this)' style=display:none><label id='file-input' for='file'>Choose file...</label><div><label for=\"animated\" class=\"chkboxlabel\"><input type=\"checkbox\" name=\"animated\" id=\"animated\">Animated GIF</label></div><input id='sub-button' type='submit' class=actionbtn value='Upload'><br><br><div id='prg'></div><br><div id='prgbar'><div id='bar'></div></div><br><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form>" + "<script>function sub(obj){var fileName = obj.value.split('\\\\');document.getElementById('file-input').innerHTML = '   '+ fileName[fileName.length-1];};$('form').submit(function(e){e.preventDefault();url = '/upload';if (document.getElementById('animated').checked) {url = '/upload?animated=true';}var form = $('#upload_form')[0];var data = new FormData(form);$.ajax({url: url,type: 'POST',data: data,contentType: false,processData: false,xhr: function() {var xhr = new window.XMLHttpRequest();xhr.upload.addEventListener('progress', function(evt) {if (evt.lengthComputable) {var per = evt.loaded / evt.total;if (evt.loaded != evt.total) {$('#sub-button').prop('disabled', true);$('#back-button').prop('disabled', true);$('#prg').html('Upload Progress: ' + Math.round(per*100) + '%');} else {$('#sub-button').prop('disabled', false);$('#back-button').prop('disabled', false);var inputFile = $('form').find(\"input[type=file]\");var fileName = inputFile[0].files[0].name;var folder = " + String(gif_folder) + ";if (document.getElementById('animated').checked) {folder = " + String(animated_gif_folder) + ";}$('#prg').html('Upload Success, click GIF to play<br><a href=\"/sdplay?file=' + folder + fileName.charAt(0).toUpperCase() + '/' + fileName +'\"><img src=\"' + folder + fileName.charAt(0) + '/' + fileName + '\"></a>');}$('#bar').css('width',Math.round(per*100) + '%');}}, false);return xhr;},success:function(d, s) {console.log('success!') },error: function (a, b, c) {}});});</script>" + "</body></html>\r\n"
+    "<html><head><meta charset=\"utf-8\" /><title>Wgrywanie GIF-a</title>" + style + "</head><body><script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script><form method='POST' action='#' enctype='multipart/form-data' id='upload_form'><h1>Wgrywanie GIF-a</h1><input type='file' name='update' id='file' onchange='sub(this)' style=display:none><label id='file-input' for='file'>Wybierz plik...</label><div><label for=\"animated\" class=\"chkboxlabel\"><input type=\"checkbox\" name=\"animated\" id=\"animated\">Animowany GIF</label></div><input id='sub-button' type='submit' class=actionbtn value='Wgraj'><br><br><div id='prg'></div><br><div id='prgbar'><div id='bar'></div></div><br><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form>" + "<script>function sub(obj){var fileName = obj.value.split('\\\\');document.getElementById('file-input').innerHTML = '   '+ fileName[fileName.length-1];};$('form').submit(function(e){e.preventDefault();url = '/upload';if (document.getElementById('animated').checked) {url = '/upload?animated=true';}var form = $('#upload_form')[0];var data = new FormData(form);$.ajax({url: url,type: 'POST',data: data,contentType: false,processData: false,xhr: function() {var xhr = new window.XMLHttpRequest();xhr.upload.addEventListener('progress', function(evt) {if (evt.lengthComputable) {var per = evt.loaded / evt.total;if (evt.loaded != evt.total) {$('#sub-button').prop('disabled', true);$('#back-button').prop('disabled', true);$('#prg').html('Postęp wgrywania: ' + Math.round(per*100) + '%');} else {$('#sub-button').prop('disabled', false);$('#back-button').prop('disabled', false);var inputFile = $('form').find(\"input[type=file]\");var fileName = inputFile[0].files[0].name;var folder = " + String("/static/") + ";if (document.getElementById('animated').checked) {folder = " + String("/animated/") + ";}$('#prg').html('Upload Success, click GIF to play<br><a href=\"/sdplay?file=' + folder + fileName.charAt(0).toUpperCase() + '/' + fileName +'\"><img src=\"' + folder + fileName.charAt(0) + '/' + fileName + '\"></a>');}$('#bar').css('width',Math.round(per*100) + '%');}}, false);return xhr;},success:function(d, s) {console.log('success!') },error: function (a, b, c) {}});});</script>" + "</body></html>\r\n"
   );
 }
 
@@ -694,10 +700,10 @@ void handleUpload() {
 
   if (uploadfile.status == UPLOAD_FILE_START) {
     String filename = String(uploadfile.filename);
-    String folder = String(gif_folder);
+    String folder = String("/static/");
 
     if (server.arg("animated") != "") {
-      folder = String(animated_gif_folder);
+      folder = String("/animated/");
     }
 
     if (!filename.startsWith("/")) {
@@ -789,7 +795,7 @@ void handleRemotePlay() {
 
     setGIF(gif_filename, false);
 
-    server.send(200, F("text/html"), "[OK] SUCCESS\r\n");
+    server.send(200, F("text/html"), "[OK] Success!\r\n");
     return;
   }
 
@@ -806,7 +812,7 @@ void handleRemotePlay() {
 // Usage: curl http://rgbmatrix.local/localplay?file=MENU
 void handleLocalPlay() {
   if (server.method() != HTTP_GET) {
-    server.send(405, F("text/plain"), "[ERROR] Unsupported HTTP method - /localplay supports only GET method!\r\n");
+    server.send(405, F("text/plain"), "[ERROR] Unsupported HTTP Method - /localplay supports only GET method!\r\n");
     return;
   }
 
@@ -832,7 +838,7 @@ void handleLocalPlay() {
   bool gif_found = false;
 
   if (playback != "Static") {
-    String agif_fullpath = String(animated_gif_folder) + String(letter_folder) + "/" + server.arg("file") + ".gif";
+    String agif_fullpath = String("/animated/") + String(letter_folder) + "/" + server.arg("file") + ".gif";
     const char *agif_requested_filename = agif_fullpath.c_str();
 
     if (SD.exists(agif_requested_filename)) {
@@ -841,12 +847,15 @@ void handleLocalPlay() {
 
       setGIF(agif_requested_filename, true);
 
-      server.send(200, F("text/html"), "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Local Play</title>" + style + "</head><body><form><p>Displaying GIF: " + sd_filename + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>");
+      server.send(
+        200,
+        F("text/html"),
+        "<html><head><meta charset=\"utf-8\" /><title>Odtwarzanie z SD</title>" + style + "</head><body><form><p>Wyświetlany GIF: " + sd_filename + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>\r\n");
     }
   }
 
   if (playback != "Animated") {
-    String fullpath = String(gif_folder) + String(letter_folder) + "/" + server.arg("file") + ".gif";
+    String fullpath = String("/static/") + String(letter_folder) + "/" + server.arg("file") + ".gif";
     const char *requested_filename = fullpath.c_str();
 
     if (SD.exists(requested_filename)) {
@@ -855,7 +864,10 @@ void handleLocalPlay() {
 
       setGIF(requested_filename, true);
 
-      server.send(200, F("text/html"), "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Local Play</title>" + style + "</head><body><form><p>Displaying GIF: " + sd_filename + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>");
+      server.send(
+        200,
+        F("text/html"),
+        "<html><head><meta charset=\"utf-8\" /><title>Odtwarzanie z SD</title>" + style + "</head><body><form><p>Wyświetlany plik statyczny: " + sd_filename + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>\r\n");
     }
   }
 
@@ -883,7 +895,7 @@ void handleSDPlay() {
   }
 
   if (server.arg("file") == "") {
-    server.send(405, F("text/plain"), "[ERROR] Method Not Allowed\r\n");
+    server.send(405, F("text/plain"), "[ERROR] Method Not Allowed\r\n"); // Brakuje parametru
     return;
   }
 
@@ -894,7 +906,7 @@ void handleSDPlay() {
   tty_client = false;
 
   if (!SD.exists(server.arg("file"))) {
-    server.send(404, F("text/plain"), "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>SD Play</title>" + style + "</head><body><form><p>" + "File Not Found: " + server.arg("file") + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+    server.send(404, F("text/plain"), "<html><head><meta charset=\"utf-8\" /><title>Odtwarzanie z SD</title>" + style + "</head><body><form><p>" + "Nie znaleziono pliku: " + server.arg("file") + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
     return;
   }
 
@@ -903,7 +915,7 @@ void handleSDPlay() {
   const char *requested_filename = server.arg("file").c_str();
   setGIF(requested_filename, true);
 
-  server.send(200, F("text/html"), "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>SD Play</title>" + style + "</head><body><form><p>" + "Displaying SD File: " + server.arg("file") + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+  server.send(200, F("text/html"), "<html><head><meta charset=\"utf-8\" /><title>Odtwarzanie z SD</title>" + style + "</head><body><form><p>" + "Wyświetlany GIF: " + server.arg("file") + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
 }
 
 // Endpoint: /text
@@ -916,7 +928,7 @@ void handleText() {
   }
 
   if (server.arg("line") == "") {
-    server.send(405, F("text/plain"), "[ERROR] Method Not Allowed\r\n");
+    server.send(405, F("text/plain"), "[ERROR] Method Not Allowed\r\n"); // Brakuje parametru
     return;
   }
 
@@ -930,7 +942,7 @@ void handleText() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>SD Play</title>" + style + "</head><body><form><p>Displaying Text: " + server.arg("line") + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+    "<html><head><meta charset=\"utf-8\" /><title>Wyświetlanie tekstu</title>" + style + "</head><body><form><p>Wyświetlany tekst: " + server.arg("line") + "</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>\r\n");
 }
 
 // Endpoint: /version
@@ -958,7 +970,7 @@ void handleClear() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Display Cleared</title><meta http-equiv=\"refresh\" content=\"3;URL=\'/\'\" />" + style + "</head><body><form><p>Display Cleared</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+    "<html><head><meta charset=\"utf-8\" /><title>Czyszczenie ekranu</title><meta http-equiv=\"refresh\" content=\"3;URL=\'/\'\" />" + style + "</head><body><form><p>Ekran wyczyszczony</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>\r\n");
 }
 
 // Endpoint: /reboot
@@ -973,7 +985,7 @@ void handleReboot() {
   server.send(
     200,
     F("text/html"),
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Rebooting...</title><meta http-equiv=\"refresh\" content=\"60;URL=\'/\'\" />" + style + "</head><body><form><p>Rebooting...</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Back\" /></form></body></html>\r\n");
+    "<html><head><meta charset=\"utf-8\" /><title>Restartowanie...</title><meta http-equiv=\"refresh\" content=\"60;URL=\'/\'\" />" + style + "</head><body><form><p>Restartowanie...</p><input id='back-button' type=\"button\" class=btn onclick=\"location.href='/';\" value=\"Wróć\" /></form></body></html>\r\n");
 
   ESP.restart();
 }
@@ -1048,11 +1060,13 @@ void checkClientTimeout() {
           }
         }
       } else {
-        Serial.printf("[INFO] Client gone, clearing display and deleting the GIF.\n");
+        Serial.printf("[INFO] Czyszczenie ekranu i usuwanie GIF-a.\n");
+
         matrix_display->clearScreen();
         matrix_display->setBrightness8(matrix_brightness);
-        client_ip = { 0, 0, 0, 0 };
+
         LittleFS.remove(gif_filename);
+        client_ip = { 0, 0, 0, 0 };
         sd_filename = "";
       }
     }
@@ -1079,45 +1093,53 @@ void checkSerialClient() {
     new_command = Serial.readStringUntil('\n');
     new_command.trim();
   }
-  if (new_command != current_command) {
-    if (new_command.endsWith("QWERTZ")) {
-    } else if (new_command.startsWith("CMD")) {
-    } else if (new_command == "cls") {
-    } else if (new_command == "sorg") {
-    } else if (new_command == "bye") {
-    } else {
-      tty_client = true;
-      sd_filename = "";
-      LittleFS.remove(gif_filename);
-      client_ip = { 0, 0, 0, 0 };
-      bool gif_found = false;
-      if (card_mounted) {
-        if (playback != "Static") {
-          String agif_fullpath = String(animated_gif_folder) + new_command.charAt(0) + "/" + new_command + ".gif";
-          const char *agif_requested_filename = agif_fullpath.c_str();
-          if (SD.exists(agif_requested_filename)) {
-            sd_filename = agif_fullpath;
-            setGIF(agif_requested_filename, true);
-            gif_found = true;
-          }
-        }
-        if (playback != "Animated") {
-          String fullpath = String(gif_folder) + new_command.charAt(0) + "/" + new_command + ".gif";
-          const char *requested_filename = fullpath.c_str();
-          if (SD.exists(requested_filename)) {
-            sd_filename = fullpath;
-            setGIF(requested_filename, true);
-            gif_found = true;
-          }
+
+  if (new_command == current_command) {
+    return;
+  }
+
+  if (new_command.endsWith("QWERTZ")) {
+  } else if (new_command.startsWith("CMD")) {
+  } else if (new_command == "cls") {
+  } else if (new_command == "sorg") {
+  } else if (new_command == "bye") {
+  } else { // Obsługa wyświetlacza po TTY
+    LittleFS.remove(gif_filename); // usuwamy poprzedni plik
+
+    tty_client = true;
+    sd_filename = "";
+    client_ip = { 0, 0, 0, 0 };
+
+    bool found = false;
+    if (card_mounted) { // do uruchomienia po TTY potrzebna jest karta SD
+      if (playback != "Static") {
+        String fullpath = String("/animated/") + new_command.charAt(0) + "/" + new_command + ".gif";
+
+        if (SD.exists(fullpath.c_str())) {
+          found = true;
+          sd_filename = fullpath; // aktualizacja sd_filename do odegrania
+          setGIF(fullpath.c_str(), true);
         }
       }
-      if (!gif_found) {
-        sd_filename = "";
-        showTextLine(new_command);
+      if (playback != "Animated") {
+        String fullpath = String("/static/") + new_command.charAt(0) + "/" + new_command + ".gif";
+
+        if (SD.exists(fullpath.c_str())) {
+          found = true;
+          sd_filename = fullpath; // aktualizacja sd_filename do odegrania
+          setGIF(fullpath.c_str(), true);
+        }
       }
     }
-    current_command = new_command;
+
+    // Jeśli nie znalazło GIF-a, wypisz
+    if (!found) {
+      sd_filename = "";
+      showTextLine(new_command);
+    }
   }
+
+  current_command = new_command;
 }
 
 void displaySetup() {
@@ -1346,10 +1368,9 @@ void showGIF(const char *name, bool sd) {
     if (gif.open(name, GIFSDOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw)) {
       GIFINFO pInfo;
       gif.getInfo(&pInfo);
-
       Serial.printf("[INFO] W: %d | H: %d | Frames: %d | Duration: %d ms\n", gif.getCanvasWidth(), gif.getCanvasHeight(), pInfo.iFrameCount, pInfo.iDuration);
-      int i = 0;
 
+      int i = 0;
       do {
         i++;
         Serial.printf("[INFO] PLAYING FRAME: %d / %d\n", i, pInfo.iFrameCount);
@@ -1370,10 +1391,9 @@ void showGIF(const char *name, bool sd) {
     if (gif.open(name, GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw)) {
       GIFINFO pInfo;
       gif.getInfo(&pInfo);
-
       Serial.printf("[INFO] W: %d | H: %d | Frames: %d | Duration: %d ms\n", gif.getCanvasWidth(), gif.getCanvasHeight(), pInfo.iFrameCount, pInfo.iDuration);
-      int i = 0;
 
+      int i = 0;
       do {
         i++;
         Serial.printf("[INFO] PLAYING FRAME: %d / %d\n", i, pInfo.iFrameCount);
@@ -1424,7 +1444,7 @@ void showStatus() {
   byte r = (byte)(rgb >> 16);
   byte g = (byte)(rgb >> 8);
   byte b = (byte)(rgb);
-  String display_string = "Wifi: " + wifi_mode + "\n" + my_ip.toString() + "\nrgbmatrix.local\nSD: " + sd_status;
+  String display_string = "Wi-Fi: " + wifi_mode + "\nAddress: " + my_ip.toString() + "\nrgbmatrix.local\nSD: " + sd_status;
   matrix_display->clearScreen();
   matrix_display->setBrightness8(matrix_brightness);
   matrix_display->setTextColor(matrix_display->color565(r, g, b));
